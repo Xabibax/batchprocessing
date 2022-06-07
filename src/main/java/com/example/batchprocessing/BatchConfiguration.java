@@ -1,7 +1,7 @@
 package com.example.batchprocessing;
 
-import javax.sql.DataSource;
-
+import org.openapitools.client.ApiClient;
+import org.openapitools.client.api.PostsApi;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
@@ -20,6 +20,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 
+import javax.sql.DataSource;
+
 @Configuration
 @EnableBatchProcessing
 public class BatchConfiguration {
@@ -31,13 +33,20 @@ public class BatchConfiguration {
     public StepBuilderFactory stepBuilderFactory;
 
     @Bean
+    public PostsApi postsApi() {
+        PostsApi postsApi = new PostsApi();
+        postsApi.setApiClient(new ApiClient().setBasePath("https://jsonplaceholder.typicode.com/"));
+        return postsApi;
+    }
+
+    @Bean
     public FlatFileItemReader<Person> reader() {
         return new FlatFileItemReaderBuilder<Person>()
                 .name("personItemReader")
                 .resource(new ClassPathResource("sample-data.csv"))
                 .delimited()
-                .names(new String[] { "firstName", "lastName" })
-                .fieldSetMapper(new BeanWrapperFieldSetMapper<Person>() {
+                .names(new String[]{"firstName", "lastName"})
+                .fieldSetMapper(new BeanWrapperFieldSetMapper<>() {
                     {
                         setTargetType(Person.class);
                     }
@@ -46,12 +55,23 @@ public class BatchConfiguration {
     }
 
     @Bean
+    public RestJsonPlaceholderReader jsonPlaceholderReader() {
+        return new RestJsonPlaceholderReader();
+    }
+
+    @Bean
     public PersonItemProcessor processor() {
         return new PersonItemProcessor();
     }
+
     @Bean
     public PersonItemProcessor2 processor2() {
         return new PersonItemProcessor2();
+    }
+
+    @Bean
+    public PostItemProcessor processor3() {
+        return new PostItemProcessor();
     }
 
     @Bean
@@ -64,13 +84,26 @@ public class BatchConfiguration {
     }
 
     @Bean
+    public JdbcBatchItemWriter<Post> postWriter(DataSource dataSource) {
+        return new JdbcBatchItemWriterBuilder<Post>()
+                .itemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<>())
+                .sql("INSERT INTO post (title, completed) VALUES (:title, :completed)")
+                .dataSource(dataSource)
+                .build();
+    }
+
+    @Bean
     public Job importUserJob(JobCompletionNotificationListener listener, @Autowired @Qualifier("step1") Step step1,
-            @Autowired @Qualifier("step2") Step step2) {
+                             @Autowired @Qualifier("step2") Step step2,
+                             @Autowired @Qualifier("step3") Step step3
+    ) {
         return jobBuilderFactory.get("importUserJob")
                 .incrementer(new RunIdIncrementer())
                 .listener(listener)
                 .flow(step1)
                 .next(step2)
+                .next(step3)
+
                 .end()
                 .build();
     }
@@ -91,6 +124,16 @@ public class BatchConfiguration {
                 .<Person, Person>chunk(10)
                 .reader(reader())
                 .processor(processor2())
+                .writer(writer)
+                .build();
+    }
+
+    @Bean("step3")
+    public Step step3(JdbcBatchItemWriter<Post> writer) {
+        return stepBuilderFactory.get("step3")
+                .<org.openapitools.client.model.Post, Post>chunk(10)
+                .reader(jsonPlaceholderReader())
+                .processor(processor3())
                 .writer(writer)
                 .build();
     }

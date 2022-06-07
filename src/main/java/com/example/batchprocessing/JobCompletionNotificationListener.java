@@ -27,9 +27,17 @@ public class JobCompletionNotificationListener extends JobExecutionListenerSuppo
             log.info("!!! JOB FINISHED! Time to verify the results");
 
             jdbcTemplate.query("SELECT first_name, last_name FROM people",
-                    (rs, row) -> new Person(
-                            rs.getString(1),
-                            rs.getString(2)))
+                            (rs, row) -> new Person(
+                                    rs.getString(1),
+                                    rs.getString(2)))
+                    .forEach(person -> log.info("Found <" + person + "> in the database."));
+            jdbcTemplate.query("SELECT title, completed FROM post",
+                    (rs, row) -> {
+                        Post post = new Post();
+                        post.setTitle(rs.getString(1));
+                        post.setCompleted(rs.getString(2));
+                        return post;
+                    })
                     .forEach(person -> log.info("Found <" + person + "> in the database."));
         }
     }
